@@ -83,13 +83,17 @@ class TextExtension(Frame):
 
 script_path = os.path.join(os.environ['USERPROFILE'],'Desktop\Archivos Crypto')
 Path(script_path).mkdir(parents=True, exist_ok=True)
-#os.path.dirname(os.path.abspath(__file__))
-#str( pathlib.Path(__file__).parent.resolve() )
 cur = None
 
 try:
     con = sqlite3.connect( script_path + '\crypto.db' )
     cur = con.cursor()
+except Error as e:
+    ## generating the message and message window to notify user if amount is empty
+    msg = f'Error! Cannot create the database connection.'
+    msg += e
+    showinfo( title = 'Stop!', message = msg )
+else:
     try:
         cur.execute( ''' CREATE TABLE IF NOT EXISTS cryptos (
             id integer PRIMARY KEY AUTOINCREMENT,
@@ -100,17 +104,38 @@ try:
         cur.execute( ''' CREATE TABLE IF NOT EXISTS transactions_history (
             id integer PRIMARY KEY AUTOINCREMENT,
             crypto_code text NOT NULL,
+            crypto_value double NOT NULL,
             amount double NOT NULL,
             precio_pesos double NOT NULL,
             dolar_value double NOT NULL,
+            transaction_type text NOT NULL,
             transaction_date datetime NOT NULL
         ) ''' )
+        cur.execute( ''' CREATE TABLE IF NOT EXISTS transaction_type(
+            id integer PRIMARY KEY AUTOINCREMENT,
+            transaction_type text NOT NULL
+        )''' )
+        cur.execute( 'INSERT INTO transaction_type ( "transaction_type" ) VALUES ( ? )', ('Buy',) )
+        cur.execute( 'INSERT INTO transaction_type ( "transaction_type" ) VALUES ( ? )', ('Sell',) )
+        cur.execute( 'INSERT INTO transaction_type ( "transaction_type" ) VALUES ( ? )', ('Trade',) )
+        cur.execute( 'INSERT INTO transaction_type ( "transaction_type" ) VALUES ( ? )', ('Stack',) )
+        cur.execute( 'INSERT INTO transaction_type ( "transaction_type" ) VALUES ( ? )', ('Games',) )
         cur.execute( ''' CREATE TABLE IF NOT EXISTS request_history (
             id integer PRIMARY KEY AUTOINCREMENT,
             crypto_code text NOT NULL,
             crypto_value double NOT NULL,
             request_date datetime NOT NULL
         ) ''' )
+        cur.execute(''' CREATE TABLE IF NOT EXISTS trading_history (
+            id integer PRIMARY KEY AUTOINCREMENT,
+            initial_crypto_code text NOT NULL,
+            final_crypto_code text NOT NULL,
+            initial_crypto_amount double NOT NULL,
+            final_crypto_amount double NOT NULL,
+            final_crypto_value double NOT NULL,
+            convertion_index double NOT NULL,
+            trading_date datetime NOT NULL
+        ) ''')
         con.commit()
     except Error as e:
         ## generating the message and message window to notify user if amount is empty
@@ -118,11 +143,7 @@ try:
         msg += e
         showinfo( title = 'Stop!', message = msg )
 
-except Error as e:
-    ## generating the message and message window to notify user if amount is empty
-    msg = f'Error! Cannot create the database connection.'
-    msg += e
-    showinfo( title = 'Stop!', message = msg )
+
 
 ## write excel file
 def write_excel_file( filename, data_header, data, tipo_archivo ):
@@ -159,177 +180,183 @@ def write_excel_file( filename, data_header, data, tipo_archivo ):
     excel_file.close()
 
 ## when 'Recibir Cantidad' button is pressed, 'recibir_clicked' is called
-def recibir_clicked( crypto ):
+def recibir_clicked(  ):
     
+    crypto = cripto_list_recibir.get()
     if crypto == '':
         ## no code was selected
         ## generating the message and message window to notify user if selection is empty
         msg = f'You have to select one crypto-coin'
         showinfo( title = 'Stop!', message = msg )
-    else:
-        cantidad = textbox_recibir_cantidad_cry.get()
-        cantidad = cantidad.replace(',','.')
-        valor_pesos = textbox_recibir_cantidad_pesos.get()
-        valor_pesos = valor_pesos.replace(',','.')
-        if cantidad == '':
-            ## no input for crypto amount
-            ## generating the message and message window to notify user if amount is empty
-            msg = f'You have to enter the amount of crypto you will receive'
-            showinfo( title = 'Stop!', message = msg )
-        else:
-            
-            try:
-                float( cantidad )
-                if valor_pesos == '':
-                    ## no input for $$ amount
-                    ## generating the message and message window to notify user if input is incorrect
-                    msg = f'You have to enter a numerical input in "Cantidad Pesos($)" field. If you do not buy those cryptos then just enter 0.'
-                    showinfo( title = 'Stop!', message = msg )
-                else:
-
-                    try:
-                        float( valor_pesos )
-                        if variable_check_old_tranfer.get() == 1:
-                            ## checked
-                            if textbox_recibir_valor_usd.get() == '':
-                                ## no input for dolar blue value
-                                ## generating the message and message window to notify user if input is incorrect
-                                msg = f'You have to enter an input for dolar value'
-                                showinfo( title = 'Stop!', message = msg )
-                            else:
-                                try:
-                                    valor_usd_viejo = float( textbox_recibir_valor_usd.get() )
-                                    #print(type(datetime.strptime(textbox_recibir_date.get(), "%Y-%m-%d")))
-                                    if textbox_recibir_date.get() == '':
-                                        ## generating the message and message window to notify user if input is incorrect
-                                        msg = f'You have to enter an input for tranfer datetime'
-                                        showinfo( title = 'Stop!', message = msg )
-                                        return
-                                    else:
-                                        #print(datetime.strptime(textbox_recibir_date.get(), '%Y-%m-%d'))
-                                        try:
-                                            new_date = datetime.strptime(textbox_recibir_date.get(), '%Y-%m-%d')
-                                            cur.execute('SELECT amount, last_date FROM cryptos WHERE crypto_code = ?', (crypto,) )
-                                            rows = cur.fetchall()
-                                            if len(rows) == 0:
-                                                ## There is no reg for that crypto
-                                                cur.execute( 'INSERT INTO cryptos ( "crypto_code", "amount", "last_date" ) VALUES ( ?, ?, ? )', ( crypto, float( cantidad ), new_date ) )
-                                                cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "dolar_value", "transaction_date" ) VALUES ( ?, ?, ?, ? )', ( crypto, float( cantidad ), valor_usd_viejo, new_date ) )
-                                                con.commit()
-
-                                                ## generating the message and message window to notify user
-                                                msg = f'Now you have { cantidad } of { crypto } crypto!'
-                                                #showinfo( title = 'Stop!', message = msg )
-                                                txt_edit.insert_text( msg )
-                                                txt_edit.insert_text("\n ----------------------------------------------------------\n")
-                                            else:
-                                                new_value = float(rows[0][0]) + float( cantidad )
-                                                cur.execute('UPDATE cryptos SET amount = ?, last_date = ? WHERE crypto_code = ?', ( new_value, new_date, crypto ) )
-                                                cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "dolar_value", "transaction_date" ) VALUES ( ?, ?, ?, ? )', ( crypto, float( cantidad ), valor_usd_viejo, new_date ) )
-                                                con.commit()
-                                            
-                                                ## generating the message and message window to notify user
-                                                msg = f'Now you have { new_value } of { crypto } crypto!'
-                                                #showinfo( title = 'Stop!', message = msg )
-                                                txt_edit.insert_text( msg )
-                                                txt_edit.insert_text("\n ----------------------------------------------------------\n")
-                                        except Exception as e:
-                                            txt_edit.insert_text( traceback.format_exc() )
-                                            msg = f"Incorrect data format, should be YYYY-MM-DD"
-                                            showinfo( title = 'Stop!', message = msg )
-                                except Exception as e:
-                                    print(traceback.format_exc())
-                                    ## input for dolar blue value is not a number
-                                    ## generating the message and message window to notify user if input is incorrect
-                                    msg = f'You have to enter a numerical input for dolar value'
-                                    showinfo( title = 'Stop!', message = msg )
-                                    return
-                        else:
-                            cur.execute('SELECT amount FROM cryptos WHERE crypto_code = ?', (crypto,) )
-                            rows = cur.fetchall()
-                            if len(rows) == 0:
-                                ## There is no reg for that crypto
-                                cur.execute( 'INSERT INTO cryptos ( "crypto_code", "amount", "last_date" ) VALUES ( ?, ?, ? )', ( crypto, float( cantidad ), datetime.now() ) )
-                                cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "dolar_value", "transaction_date" ) VALUES ( ?, ?, ?, ? )', ( crypto, float( cantidad ), valor_usd, datetime.now() ) )
-                                con.commit()
-
-                                ## generating the message and message window to notify user
-                                msg = f'Now you have { cantidad } of { crypto } crypto!'
-                                #showinfo( title = 'Stop!', message = msg )
-                                txt_edit.insert_text( msg )
-                                txt_edit.insert_text("\n ----------------------------------------------------------\n")
-                            else:
-                                new_value = rows[0][0] + float( cantidad )
-                                cur.execute('UPDATE cryptos SET amount = ?, last_date = ? WHERE crypto_code = ?', ( new_value, datetime.now(), crypto ) )
-                                cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "dolar_value", "transaction_date" ) VALUES ( ?, ?, ?, ? )', ( crypto, float( cantidad ), valor_usd, datetime.now() ) )
-                                con.commit()
-                            
-                                ## generating the message and message window to notify user
-                                msg = f'Now you have { new_value } of { crypto } crypto!'
-                                #showinfo( title = 'Stop!', message = msg )
-                                txt_edit.insert_text( msg )
-                                txt_edit.insert_text("\n ----------------------------------------------------------\n")
-                    except Exception as e:
-                        print(traceback.format_exc())
-                        ## no numerical input for pesos amount
-                        ## generating the message and message window to notify user if amount is empty
-                        msg = f'You have to enter a numerical amount for $$ you paid'
-                        showinfo( title = 'Stop!', message = msg )
-                        return
-            except Exception as e:
-                print(traceback.format_exc())
-                ## no numerical input for crypto amount
-                ## generating the message and message window to notify user if amount is empty
-                msg = f'You have to enter a numerical amount for crypto you will receive'
-                showinfo( title = 'Stop!', message = msg )
-            
-## when 'Transferir' button is pressed, 'transferir_clicked' is called    
-def transferir_clicked( crypto, cantidad_cry ):
     
+    cantidad = textbox_recibir_cantidad_cry.get()
+    cantidad = cantidad.replace(',','.')
+
+    valor_pesos = textbox_recibir_cantidad_pesos.get()
+    valor_pesos = valor_pesos.replace(',','.')
+
+    try:
+        cantidad = float( cantidad )
+    except Exception as e:
+        print(traceback.format_exc())
+        ## no numerical input for crypto amount
+        ## generating the message and message window to notify user if amount is empty
+        msg = f'You have to enter a numerical amount for crypto you will receive'
+        showinfo( title = 'Stop!', message = msg )
+    else:
+        try:
+            valor_pesos = float( valor_pesos )
+        except Exception as e:
+            print(traceback.format_exc())
+            ## no numerical input for pesos amount
+            ## generating the message and message window to notify user if amount is empty
+            msg = f'You have to enter a numerical amount for $$ you paid'
+            showinfo( title = 'Stop!', message = msg )
+            return
+        else:
+            if cantidad == '':
+                ## no input for crypto amount
+                ## generating the message and message window to notify user if amount is empty
+                msg = f'You have to enter the amount of crypto you will receive'
+                showinfo( title = 'Stop!', message = msg )
+            if valor_pesos == '':
+                ## no input for $$ amount
+                ## generating the message and message window to notify user if input is incorrect
+                msg = f'You have to enter a numerical input in "Cantidad Pesos($)" field. If you do not buy those cryptos then just enter 0.'
+                showinfo( title = 'Stop!', message = msg )
+                                
+            if variable_check_old_tranfer.get() == 1:
+                ## checked
+                if textbox_recibir_valor_usd.get() == '':
+                    ## no input for dolar blue value
+                    ## generating the message and message window to notify user if input is incorrect
+                    msg = f'You have to enter an input for dolar value'
+                    showinfo( title = 'Stop!', message = msg )
+                if textbox_recibir_date.get() == '':
+                    ## generating the message and message window to notify user if input is incorrect
+                    msg = f'You have to enter an input for tranfer datetime'
+                    showinfo( title = 'Stop!', message = msg )
+                    #return
+                valor_usd_viejo = textbox_recibir_valor_usd.get()
+                valor_usd_viejo = valor_usd_viejo.replace(',','.')
+                try:
+                    valor_usd_viejo = float( valor_usd_viejo )
+                except Exception as e:
+                    print(traceback.format_exc())
+                    ## input for dolar blue value is not a number
+                    ## generating the message and message window to notify user if input is incorrect
+                    msg = f'You have to enter a numerical input for dolar value'
+                    showinfo( title = 'Stop!', message = msg )
+                    return
+                else:
+                    try:
+                        new_date = datetime.strptime(textbox_recibir_date.get(), '%Y-%m-%d')
+                    except Exception as e:
+                        txt_edit.insert_text( traceback.format_exc() )
+                        msg = f"Incorrect data format, should be YYYY-MM-DD"
+                        showinfo( title = 'Stop!', message = msg )
+                    else:
+                        cur.execute('SELECT amount, last_date FROM cryptos WHERE crypto_code = ?', (crypto,) )
+                        rows = cur.fetchall()
+                        if len(rows) == 0:
+                            ## There is no reg for that crypto
+                            cur.execute( 'INSERT INTO cryptos ( "crypto_code", "amount", "last_date" ) VALUES ( ?, ?, ? )', ( crypto, cantidad, new_date ) )
+                            cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "crypto_value", "amount", "precio_pesos", "dolar_value", "transaction_type", "transaction_date" ) VALUES ( ?, ?, ?, ?, ?, ?, ? )', ( crypto, monedas_values[ crypto ], cantidad, valor_pesos , valor_usd_viejo, 1, new_date ) )
+                            con.commit()
+
+                            ## generating the message and message window to notify user
+                            msg = f'Now you have { cantidad } of { crypto } crypto!'
+                            #showinfo( title = 'Stop!', message = msg )
+                            txt_edit.insert_text( msg )
+                            txt_edit.insert_text("\n ----------------------------------------------------------\n")
+                        else:
+                            new_value = float(rows[0][0]) + cantidad
+                            cur.execute('UPDATE cryptos SET amount = ?, last_date = ? WHERE crypto_code = ?', ( new_value, new_date, crypto ) )
+                            cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "crypto_value", "amount", "precio_pesos", "dolar_value", "transaction_type", "transaction_date" ) VALUES ( ?, ?, ?, ?, ?, ?, ? )', ( crypto, monedas_values[ crypto ], cantidad, valor_pesos , valor_usd_viejo, 1, new_date ) )
+                            con.commit()
+                        
+                            ## generating the message and message window to notify user
+                            msg = f'Now you have { new_value } of { crypto } crypto!'
+                            #showinfo( title = 'Stop!', message = msg )
+                            txt_edit.insert_text( msg )
+                            txt_edit.insert_text("\n ----------------------------------------------------------\n")
+            else:
+                cur.execute('SELECT amount FROM cryptos WHERE crypto_code = ?', (crypto,) )
+                rows = cur.fetchall()
+                if len(rows) == 0:
+                    ## There is no reg for that crypto
+                    cur.execute( 'INSERT INTO cryptos ( "crypto_code", "amount", "last_date" ) VALUES ( ?, ?, ? )', ( crypto, cantidad, datetime.now() ) )
+                    #cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "dolar_value", "transaction_date" ) VALUES ( ?, ?, ?, ? )', ( crypto, cantidad, valor_usd, datetime.now() ) )
+                    cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "crypto_value", "amount", "precio_pesos", "dolar_value", "transaction_type", "transaction_date" ) VALUES ( ?, ?, ?, ?, ?, ?, ? )', ( crypto, monedas_values[ crypto ], cantidad, valor_pesos , valor_usd, 1, datetime.now() ) )
+                    con.commit()
+
+                    ## generating the message and message window to notify user
+                    msg = f'Now you have { cantidad } of { crypto } crypto!'
+                    #showinfo( title = 'Stop!', message = msg )
+                    txt_edit.insert_text( msg )
+                    txt_edit.insert_text("\n ----------------------------------------------------------\n")
+                else:
+                    new_value = rows[0][0] + cantidad
+                    cur.execute('UPDATE cryptos SET amount = ?, last_date = ? WHERE crypto_code = ?', ( new_value, datetime.now(), crypto ) )
+                    #cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "dolar_value", "transaction_date" ) VALUES ( ?, ?, ?, ? )', ( crypto, cantidad, valor_usd, datetime.now() ) )
+                    cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "crypto_value", "amount", "precio_pesos", "dolar_value", "transaction_type", "transaction_date" ) VALUES ( ?, ?, ?, ?, ?, ?, ? )', ( crypto, monedas_values[ crypto ], cantidad, valor_pesos , valor_usd, 1, datetime.now() ) )
+                    con.commit()
+                
+                    ## generating the message and message window to notify user
+                    msg = f'Now you have { new_value } of { crypto } crypto!'
+                    #showinfo( title = 'Stop!', message = msg )
+                    txt_edit.insert_text( msg )
+                    txt_edit.insert_text("\n ----------------------------------------------------------\n")
+
+## when 'Transferir' button is pressed, 'transferir_clicked' is called    
+def transferir_clicked():
+
+    crypto = cripto_list_transferir.get()
+    cantidad_cry = string_transferir_cry.get()
+    cantidad_cry = cantidad_cry.replace(',', '.')
+
+    valor_pesos = textbox_transferir_cantidad_pesos.get()
+    valor_pesos = valor_pesos.replace(',','.')
+
     if crypto == '':
         ## generating the message and message window to notify user if selection is empty
         msg = f'You have to select one crypto-coin'
         showinfo( title = 'Stop!', message = msg )
+    if cantidad_cry == '':
+        ## generating the message and message window to notify user if amount is empty
+        msg = f'You have to enter the amount of crypto you want to tranfer'
+        showinfo( title = 'Stop!', message = msg )
+    ## check if input is numerical
+    try:
+        cantidad_cry = float( cantidad_cry )
+    except:
+        ## generating the message and message window to notify user if input is incorrect
+        msg = f'You have to enter a numerical input'
+        showinfo( title = 'Stop!', message = msg )
     else:
-        if cantidad_cry == '':
-            ## generating the message and message window to notify user if amount is empty
-            msg = f'You have to enter the amount of crypto you want to tranfer'
+        global cur, con
+        ## no error was found in the amount input
+        cur.execute('SELECT amount FROM cryptos WHERE crypto_code = ?', (crypto,) )
+        rows = cur.fetchall()
+        if len(rows) == 0:
+            ## There is no crypto to tranfer
+            msg = f'You cannot tranfer that amount because you do not have that amount'
             showinfo( title = 'Stop!', message = msg )
         else:
-            ## check if input is numerical
-            try:
-                cantidad_cry = float( cantidad_cry )
-                error_found = 0
-                cantidad = str( cantidad_cry )
-            except:
-                ## generating the message and message window to notify user if input is incorrect
-                msg = f'You have to enter a numerical input'
-                showinfo( title = 'Stop!', message = msg )
-                error_found = 1
-        
-        if error_found == 0:
-            global cur, con
-            ## no error was found in the amount input
-            cur.execute('SELECT amount FROM cryptos WHERE crypto_code = ?', (crypto,) )
-            rows = cur.fetchall()
-            if len(rows) == 0:
-                ## There is no crypto to tranfer
+            new_value = rows[0][0] - cantidad_cry
+            if new_value < 0:
+                ## There is not enough crypto to tranfer
                 msg = f'You cannot tranfer that amount because you do not have that amount'
                 showinfo( title = 'Stop!', message = msg )
             else:
-                new_value = rows[0][0] - float( cantidad )
-                if new_value < 0:
-                    ## There is not enough crypto to tranfer
-                    msg = f'You cannot tranfer that amount because you do not have that amount'
-                    showinfo( title = 'Stop!', message = msg )
-                else:
-                    cur.execute('UPDATE cryptos SET amount = ?, last_date = ? WHERE crypto_code = ?', ( new_value, datetime.now(), crypto ) )
-                    cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "transaction_date" ) VALUES ( ?, ?, ? )', ( crypto, -( float( cantidad ) ), datetime.now() ) )
-                    con.commit()
-                    ## generating the message and message window to notify user
-                    msg = f'Now you have { new_value } of { crypto } crypto!'
-                    txt_edit.insert_text( msg )
-                    txt_edit.insert_text("\n ----------------------------------------------------------\n")
+                cur.execute('UPDATE cryptos SET amount = ?, last_date = ? WHERE crypto_code = ?', ( new_value, datetime.now(), crypto ) )
+                #cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "amount", "transaction_date" ) VALUES ( ?, ?, ? )', ( crypto, -( cantidad_cry ), datetime.now() ) )
+                cur.execute( 'INSERT INTO transactions_history ( "crypto_code", "crypto_value", "amount", "precio_pesos", "dolar_value", "transaction_type", "transaction_date" ) VALUES ( ?, ?, ?, ?, ?, ?, ? )', ( crypto, monedas_values[ crypto ], -( cantidad_cry ), valor_pesos, valor_usd, 2, datetime.now() ) )
+                con.commit()
+                ## generating the message and message window to notify user
+                msg = f'Now you have { new_value } of { crypto } crypto!'
+                txt_edit.insert_text( msg )
+                txt_edit.insert_text("\n ----------------------------------------------------------\n")
 
 ## when 'Mostrar Balance de Moneda' button is pressed, 'consultar_crypto_clicked' is called
 def consultar_crypto_clicked( crypto ):
@@ -411,16 +438,6 @@ def create_archivo_transacciones(  ):
     if os.path.exists( archivo_transacciones ):
         os.remove( archivo_transacciones )
 
-    ## generating new file for Balance General de Criptomonedas
-    #transacciones_local = open( archivo_transacciones, 'a' )
-    #contador = 0
-    ## generating each record
-    #for row in rows:
-    #    registro_transacciones_general = str( rows[contador][0] ) + '\t' + str( rows[contador][1] ) + '\t' + str( rows[contador][2] ) + '\tUSD ' + str( rows[contador][2] * monedas_values[ rows[contador][1] ] ) + '\t' + str( rows[contador][3] ) 
-    #    transacciones_local.write( registro_transacciones_general + '\n' )
-    #    contador += 1
-
-    #transacciones_local.close()
     try:
         write_excel_file( archivo_transacciones, header, rows, 'Histórico de Transacciones' )
         msg = f'The file was generated and downloaded succesfully!'
@@ -429,11 +446,7 @@ def create_archivo_transacciones(  ):
         txt_edit.insert_text("\n ----------------------------------------------------------\n")
     except Exception as e:
         txt_edit.insert_text( traceback.format_exc() )
-    ## generating the message and message window to notify user
-    #msg = f'The file was generated and downloaded succesfully!'
-    #txt_edit.insert_text( msg )
-    #showinfo( title = 'Success!', message = msg )
-    #txt_edit.insert_text("\n ----------------------------------------------------------\n")
+
 
 ## Control of old tranfer checkbox
 def change_tranfer_status():
@@ -546,7 +559,7 @@ check_old_tranfer = tk.Checkbutton( ingresar_crypto, text = 'Tranferencia Vieja'
 check_old_tranfer.grid(row = 6, column = 1 , padx = 5, sticky = "ew")
 
 ## Button to take action
-button_recibir_cantidad = tk.Button( ingresar_crypto, text = 'Ingresar Cantidad', command = lambda: recibir_clicked( cripto_list_recibir.get() ) )
+button_recibir_cantidad = tk.Button( ingresar_crypto, text = 'Ingresar Cantidad', command = recibir_clicked )
 button_recibir_cantidad.grid( row = 6, column = 0, padx = 10, pady = 10 )
 
 ##################################################################################################################################
@@ -559,11 +572,14 @@ descontar_crypto.grid( row = 1, column = 0, sticky = "nswe" )
 label = tk.Label( descontar_crypto, text = 'Crypto Code', font = ( 'Helvetica', 12 ), fg = 'black' )
 label.grid( row = 0, column = 0 )
 
+label = tk.Label( descontar_crypto, text = 'Cantidad Crypto:', font = ( 'Helvetica', 12 ), fg = 'black' )
+label.grid( row = 2, column = 0 )
+
 ## Text entry for amount crypto
 string_transferir_cry = tk.StringVar(  descontar_crypto )
 textbox_transferir_monto_cry = tk.Entry( descontar_crypto, textvariable = string_transferir_cry, state = 'normal' )
 textbox_transferir_monto_cry.insert( 0, '' )
-textbox_transferir_monto_cry.grid( row = 2, column = 0, padx = 10 )
+textbox_transferir_monto_cry.grid( row = 2, column = 1, padx = 10 )
 
 ## Combo Box for cryptos
 list_value_transferir = tk.StringVar()
@@ -576,8 +592,17 @@ cripto_list_transferir = Combobox( descontar_crypto, textvariable = list_value_t
 cripto_list_transferir['values'] = monedas
 cripto_list_transferir.grid( row = 1, column = 0, padx = 10 )
 
+label = tk.Label( descontar_crypto, text = 'Cantidad Pesos($):', font = ( 'Helvetica', 12 ), fg = 'black' )
+label.grid( row = 3, column = 0 )
+
+## Text entry for amount $$
+string_transferir_pesos = tk.StringVar( descontar_crypto )
+textbox_transferir_cantidad_pesos = tk.Entry( descontar_crypto, textvariable = string_transferir_pesos, state = 'normal' )
+textbox_transferir_cantidad_pesos.insert( 0, '' )
+textbox_transferir_cantidad_pesos.grid( row = 3, column = 1, padx = 10 )
+
 ## Button to take action
-button = tk.Button( descontar_crypto, text = 'Transferir', command = lambda: transferir_clicked( cripto_list_transferir.get(), string_transferir_cry.get() ) )
+button = tk.Button( descontar_crypto, text = 'Transferir', command = transferir_clicked )
 button.grid( row = 4, column = 0, padx = 10, pady = 10 )
 
 ##########################################################################################################################################
